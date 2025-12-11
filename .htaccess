@@ -1,0 +1,18 @@
+# Simple .htaccess for social-app
+Options -Indexes
+
+# Allow access to PHP files
+<FilesMatch "\.(php|html|css|js|jpg|jpeg|png|gif|ico)$">
+    Order allow,deny
+    Allow from all
+</FilesMatch>
+
+# Protect sensitive directories
+RedirectMatch 403 ^/uploads/.*$
+RedirectMatch 403 ^/config/.*$
+
+# Basic security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+</IfModule>

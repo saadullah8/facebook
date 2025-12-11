@@ -1,0 +1,67 @@
+=== FRIEND REQUEST START ===
+Time: 2025-12-08 09:05:07
+Script: D:\xampp\htdocs\social-app\friends\send-request.php
+POST data: []
+GET data: []
+REQUEST data: []
+SERVER REQUEST_METHOD: POST
+Content-Type header: application/json
+HTTP_ACCEPT header: */*
+php://input: {"user_id":13,"csrf_token":"269e9209f1013eb0a35a65d26ae2b34f6f6bb421bfdfdea6e07ef0fad6d09d02"}
+JSON decoded: {"user_id":13,"csrf_token":"269e9209f1013eb0a35a65d26ae2b34f6f6bb421bfdfdea6e07ef0fad6d09d02"}
+Logged in user ID: 11
+Current user data: {"id":11,"username":"saad1","email":"saadullahrasool01@gmail.com","full_name":"saad ullah Rasool","profile_pic":"default-avatar.jpg","bio":null,"is_online":1,"last_seen":"2025-12-08 08:31:19","created_at":"2025-12-07 19:17:31"}
+Found user_id in REQUEST: 13
+Final userId value: 13 (raw: 13)
+Attempting database operations...
+Target user exists: {"id":13,"username":"nomi1","full_name":"nomi"}
+No existing friendship found
+Creating new friend request...
+SUCCESS: Friend request created with ID 8
+--------------------------------------------------------------------------------
+
+=== FRIEND REQUEST START ===
+Time: 2025-12-08 09:05:07
+Script: D:\xampp\htdocs\social-app\friends\send-request.php
+POST data: []
+GET data: []
+REQUEST data: []
+SERVER REQUEST_METHOD: POST
+Content-Type header: application/json
+HTTP_ACCEPT header: */*
+php://input: {"user_id":13,"csrf_token":"269e9209f1013eb0a35a65d26ae2b34f6f6bb421bfdfdea6e07ef0fad6d09d02"}
+JSON decoded: {"user_id":13,"csrf_token":"269e9209f1013eb0a35a65d26ae2b34f6f6bb421bfdfdea6e07ef0fad6d09d02"}
+Logged in user ID: 11
+Current user data: {"id":11,"username":"saad1","email":"saadullahrasool01@gmail.com","full_name":"saad ullah Rasool","profile_pic":"default-avatar.jpg","bio":null,"is_online":1,"last_seen":"2025-12-08 08:31:19","created_at":"2025-12-07 19:17:31"}
+Found user_id in REQUEST: 13
+Final userId value: 13 (raw: 13)
+Attempting database operations...
+Target user exists: {"id":13,"username":"nomi1","full_name":"nomi"}
+No existing friendship found
+Creating new friend request...
+SUCCESS: Friend request created with ID 8
+=== FRIEND REQUEST END ===
+--------------------------------------------------------------------------------
+
+=== FRIEND REQUEST START ===
+Time: 2025-12-08 09:05:38
+Script: D:\xampp\htdocs\social-app\friends\send-request.php
+POST data: []
+GET data: []
+REQUEST data: []
+SERVER REQUEST_METHOD: POST
+Content-Type header: application/json
+HTTP_ACCEPT header: */*
+php://input: {"user_id":11,"csrf_token":"4cde45fa3dca9dcc6b4fffb025988cc58b41177c4fc2adfd25f51806e309d8ca"}
+JSON decoded: {"user_id":11,"csrf_token":"4cde45fa3dca9dcc6b4fffb025988cc58b41177c4fc2adfd25f51806e309d8ca"}
+Logged in user ID: 13
+Current user data: {"id":13,"username":"nomi1","email":"nomi@gmail.com","full_name":"nomi","profile_pic":"default-avatar.jpg","bio":null,"is_online":1,"last_seen":"2025-12-08 08:35:17","created_at":"2025-12-08 08:27:19"}
+Found user_id in REQUEST: 11
+Final userId value: 11 (raw: 11)
+Attempting database operations...
+Target user exists: {"id":11,"username":"saad1","full_name":"saad ullah Rasool"}
+Friendship exists: Status = accepted, Record ID = 8
+Relationship: user1_id=11, user2_id=13
+ERROR: Already friends
+--------------------------------------------------------------------------------
+
