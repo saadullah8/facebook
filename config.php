@@ -8,7 +8,7 @@
 
 // =========== DEFINE CONSTANTS ===========
 define('ROOT_PATH', realpath(__DIR__));
-define('BASE_URL', 'https://facebook.exlontech/social-app');
+define('BASE_URL', 'https://facebook.exlontech.com');
 define('SITE_NAME', 'SocialApp');
 define('TIMEZONE', 'Asia/Kolkata');
 
