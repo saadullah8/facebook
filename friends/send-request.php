@@ -1,9 +1,9 @@
 <?php
-// send-request.php - SIMPLIFIED WORKING VERSION
+// send-request.php - COMPATIBLE VERSION
 require_once __DIR__ . '/../config.php';
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *'); // For debugging, remove in production
+header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
@@ -13,7 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Simple error logging
 error_log("=== Friend Request Script Called ===");
 
 // ---- 1. Ensure logged in ----
@@ -30,15 +29,11 @@ error_log("Current user ID: $currentUserId");
 // ---- 2. Get target user_id ----
 $userId = 0;
 
-// Check all possible input methods
 if (!empty($_POST['user_id'])) {
     $userId = (int)$_POST['user_id'];
-    error_log("Got user_id from POST: $userId");
 } elseif (!empty($_GET['user_id'])) {
     $userId = (int)$_GET['user_id'];
-    error_log("Got user_id from GET: $userId");
 } else {
-    // Try JSON input
     $jsonInput = file_get_contents('php://input');
     error_log("Raw input: " . $jsonInput);
 
@@ -46,25 +41,15 @@ if (!empty($_POST['user_id'])) {
         $data = json_decode($jsonInput, true);
         if (json_last_error() === JSON_ERROR_NONE && isset($data['user_id'])) {
             $userId = (int)$data['user_id'];
-            error_log("Got user_id from JSON: $userId");
         }
     }
 }
-
-// Debug all inputs
-error_log("POST data: " . print_r($_POST, true));
-error_log("GET data: " . print_r($_GET, true));
 
 if ($userId <= 0) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'Invalid User ID. Please provide a valid user ID.',
-        'debug' => [
-            'received_user_id' => $userId,
-            'post_data' => $_POST,
-            'get_data' => $_GET
-        ]
+        'message' => 'Invalid User ID. Please provide a valid user ID.'
     ]);
     exit;
 }
@@ -76,6 +61,11 @@ if ($userId == $currentUserId) {
 }
 
 try {
+    // ---- Check if action_user_id column exists ----
+    $columns = db()->query("SHOW COLUMNS FROM friendships LIKE 'action_user_id'")->fetchAll();
+    $hasActionUserId = !empty($columns);
+    error_log("action_user_id column exists: " . ($hasActionUserId ? 'YES' : 'NO'));
+
     // ---- 3. Check if target user exists ----
     $userCheck = db()->prepare("SELECT id, username, full_name FROM users WHERE id = ?");
     $userCheck->execute([$userId]);
@@ -91,34 +81,64 @@ try {
     error_log("Target user found: $targetName (ID: $userId)");
 
     // ---- 4. Check existing friendship ----
-    $q = db()->prepare("
-        SELECT id, status, user1_id, user2_id 
+    $selectSql = "
+        SELECT id, status, user1_id, user2_id" . ($hasActionUserId ? ", action_user_id" : "") . "
         FROM friendships 
         WHERE (user1_id = ? AND user2_id = ?)
            OR (user1_id = ? AND user2_id = ?)
         LIMIT 1
-    ");
+    ";
+
+    $q = db()->prepare($selectSql);
     $q->execute([$currentUserId, $userId, $userId, $currentUserId]);
     $existing = $q->fetch(PDO::FETCH_ASSOC);
 
     if ($existing) {
         $status = $existing['status'];
-        $whoSent = ($existing['user1_id'] == $currentUserId) ? 'me' : 'them';
-        error_log("Existing friendship found: Status=$status, Sent by=$whoSent");
+        error_log("Existing friendship found: Status=$status");
 
         if ($status === 'pending') {
-            $message = ($whoSent == 'me')
-                ? 'You have already sent a friend request to this user'
-                : 'This user has already sent you a friend request';
-            echo json_encode(['success' => false, 'message' => $message]);
+            // Check who sent the request
+            if ($hasActionUserId) {
+                $whoSent = ($existing['action_user_id'] == $currentUserId) ? 'me' : 'them';
+            } else {
+                // Fallback: assume user1_id is always the sender
+                $whoSent = ($existing['user1_id'] == $currentUserId) ? 'me' : 'them';
+            }
+
+            if ($whoSent == 'me') {
+                echo json_encode(['success' => false, 'message' => 'You have already sent a friend request to this user']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'This user has already sent you a friend request. Please check your friend requests.']);
+            }
             exit;
         } elseif ($status === 'accepted') {
             echo json_encode(['success' => false, 'message' => 'You are already friends']);
             exit;
         } elseif ($status === 'rejected') {
             // Update rejected to pending
-            $update = db()->prepare("UPDATE friendships SET status='pending', updated_at=NOW() WHERE id=?");
-            $update->execute([$existing['id']]);
+            if ($hasActionUserId) {
+                $update = db()->prepare("
+                    UPDATE friendships 
+                    SET status='pending', 
+                        action_user_id=?,
+                        user1_id=?,
+                        user2_id=?,
+                        updated_at=NOW() 
+                    WHERE id=?
+                ");
+                $update->execute([$currentUserId, $currentUserId, $userId, $existing['id']]);
+            } else {
+                $update = db()->prepare("
+                    UPDATE friendships 
+                    SET status='pending',
+                        user1_id=?,
+                        user2_id=?,
+                        updated_at=NOW() 
+                    WHERE id=?
+                ");
+                $update->execute([$currentUserId, $userId, $existing['id']]);
+            }
 
             error_log("Updated rejected friendship ID {$existing['id']} to pending");
             echo json_encode(['success' => true, 'message' => "Friend request sent to $targetName"]);
@@ -128,16 +148,38 @@ try {
 
     // ---- 5. Create new friend request ----
     error_log("Creating new friend request...");
-    $insert = db()->prepare("
-        INSERT INTO friendships (user1_id, user2_id, status, created_at, updated_at)
-        VALUES (?, ?, 'pending', NOW(), NOW())
-    ");
 
-    $result = $insert->execute([$currentUserId, $userId]);
+    if ($hasActionUserId) {
+        $insert = db()->prepare("
+            INSERT INTO friendships (user1_id, user2_id, action_user_id, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'pending', NOW(), NOW())
+        ");
+        $result = $insert->execute([$currentUserId, $userId, $currentUserId]);
+    } else {
+        $insert = db()->prepare("
+            INSERT INTO friendships (user1_id, user2_id, status, created_at, updated_at)
+            VALUES (?, ?, 'pending', NOW(), NOW())
+        ");
+        $result = $insert->execute([$currentUserId, $userId]);
+    }
 
     if ($result) {
         $friendshipId = db()->lastInsertId();
         error_log("Success! Created friendship ID: $friendshipId");
+
+        // Create notification for target user
+        try {
+            $notifStmt = db()->prepare("
+                INSERT INTO notifications (user_id, type, message, created_at) 
+                VALUES (?, 'friend_request', ?, NOW())
+            ");
+            $notifStmt->execute([
+                $userId,
+                $currentUser['username'] . " sent you a friend request."
+            ]);
+        } catch (Exception $e) {
+            error_log("Notification error (non-critical): " . $e->getMessage());
+        }
 
         echo json_encode([
             'success' => true,
@@ -150,12 +192,14 @@ try {
         echo json_encode(['success' => false, 'message' => 'Failed to send friend request']);
     }
 } catch (Exception $e) {
-    error_log("Error: " . $e->getMessage());
+    error_log("Error in send-request.php: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
     http_response_code(500);
     echo json_encode([
         'success' => false,
         'message' => 'Server error occurred',
-        'error' => $e->getMessage()
+        'error' => $e->getMessage(),
+        'details' => 'Check server error logs for more information'
     ]);
 }
 

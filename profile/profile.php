@@ -17,7 +17,8 @@ try {
     $stmt = db()->prepare("
         SELECT p.*, 
                COUNT(DISTINCT l.id) as like_count,
-               COUNT(DISTINCT c.id) as comment_count
+               COUNT(DISTINCT c.id) as comment_count,
+               EXISTS(SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) as user_liked
         FROM posts p
         LEFT JOIN likes l ON p.id = l.post_id
         LEFT JOIN comments c ON p.id = c.post_id
@@ -25,7 +26,7 @@ try {
         GROUP BY p.id
         ORDER BY p.created_at DESC
     ");
-    $stmt->execute([$currentUser['id']]);
+    $stmt->execute([$currentUser['id'], $currentUser['id']]);
     $userPosts = $stmt->fetchAll();
 } catch (PDOException $e) {
     error_log("Get user posts error: " . $e->getMessage());
@@ -54,40 +55,10 @@ try {
 
 // Get friend count
 $friendCount = count($userFriends);
-
-// Helper function to get profile picture
-function getProfilePicForUser($userId = null) {
-    if ($userId === null) {
-        // Get current user's profile pic from session
-        return isset($_SESSION['profile_pic']) ? '../uploads/profile_pics/' . $_SESSION['profile_pic'] : '../assets/images/default-avatar.jpg';
-    }
-    
-    // In a real app, you'd fetch from database
-    // For now, return default
-    return '../assets/images/default-avatar.jpg';
-}
-
-// Helper function for online status badge
-function getOnlineStatusBadgeForUser($userId) {
-    // In a real app, check database for online status
-    // For now, return a simple badge
-    return '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                <span class="w-2 h-2 mr-1 bg-green-500 rounded-full"></span>
-                Online
-            </span>';
-}
-
-// Helper function to get first name
-function getFirstName($fullName) {
-    if (empty($fullName)) {
-        return 'User';
-    }
-    $parts = explode(' ', $fullName);
-    return $parts[0];
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -98,24 +69,17 @@ function getFirstName($fullName) {
         .profile-cover {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
+
         .profile-pic {
             border: 5px solid white;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
         }
     </style>
 </head>
+
 <body class="bg-gray-50">
-    <!-- Simple Navigation (since includes/header.php might not exist yet) -->
-    <nav class="bg-white shadow-md">
-        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
-            <a href="../index.php" class="text-xl font-bold text-blue-600"><?php echo SITE_NAME; ?></a>
-            <div class="flex items-center space-x-4">
-                <a href="../index.php" class="text-gray-600 hover:text-blue-600">Home</a>
-                <a href="profile.php" class="text-blue-600 font-medium">Profile</a>
-                <a href="../auth/logout.php" class="text-red-600 hover:text-red-800">Logout</a>
-            </div>
-        </div>
-    </nav>
+    <!-- Navigation -->
+    <?php include '../includes/header.php'; ?>
 
     <main class="container mx-auto px-4 py-6">
         <!-- Profile Header -->
@@ -123,25 +87,22 @@ function getFirstName($fullName) {
             <!-- Cover Photo -->
             <div class="profile-cover h-48 md:h-64 relative">
                 <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                <button class="absolute top-4 right-4 bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-800 px-4 py-2 rounded-full text-sm font-medium transition">
-                    <i class="fas fa-camera mr-2"></i>Update Cover
-                </button>
             </div>
-            
+
             <!-- Profile Info -->
             <div class="px-6 pb-6">
                 <div class="flex flex-col md:flex-row items-start md:items-end -mt-16 md:-mt-20">
                     <!-- Profile Picture -->
                     <div class="relative">
-                        <img src="<?php echo getProfilePicForUser($currentUser['id']); ?>" 
-                             alt="<?php echo htmlspecialchars($currentUser['full_name'] ?? $currentUser['username']); ?>"
-                             class="w-32 h-32 md:w-40 md:h-40 rounded-full profile-pic object-cover">
-                        <button onclick="openAvatarUpload()" 
-                                class="absolute bottom-2 right-2 bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700 transition">
+                        <img src="<?php echo getProfilePic($currentUser['id']); ?>"
+                            alt="<?php echo htmlspecialchars($currentUser['full_name'] ?? $currentUser['username']); ?>"
+                            class="w-32 h-32 md:w-40 md:h-40 rounded-full profile-pic object-cover">
+                        <button onclick="openAvatarUpload()"
+                            class="absolute bottom-2 right-2 bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700 transition">
                             <i class="fas fa-camera text-sm"></i>
                         </button>
                     </div>
-                    
+
                     <!-- User Info -->
                     <div class="md:ml-6 mt-4 md:mt-0 flex-1">
                         <div class="flex flex-col md:flex-row md:items-center justify-between">
@@ -151,7 +112,7 @@ function getFirstName($fullName) {
                                 </h1>
                                 <p class="text-gray-600">@<?php echo htmlspecialchars($currentUser['username']); ?></p>
                                 <div class="flex items-center mt-2 space-x-4">
-                                    <?php echo getOnlineStatusBadgeForUser($currentUser['id']); ?>
+                                    <?php echo getOnlineStatusBadge($currentUser['id']); ?>
                                     <span class="text-gray-500 text-sm">
                                         <i class="fas fa-user-friends mr-1"></i>
                                         <?php echo $friendCount; ?> friends
@@ -162,20 +123,20 @@ function getFirstName($fullName) {
                                     </span>
                                 </div>
                             </div>
-                            
+
                             <!-- Action Buttons -->
                             <div class="mt-4 md:mt-0 flex space-x-3">
-                                <a href="edit-profile.php" 
-                                   class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium transition flex items-center">
+                                <a href="edit-profile.php"
+                                    class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium transition flex items-center">
                                     <i class="fas fa-edit mr-2"></i> Edit Profile
                                 </a>
-                                <a href="../friends/friends.php" 
-                                   class="bg-gray-100 hover:bg-gray-200 text-gray-800 px-5 py-2 rounded-lg font-medium transition flex items-center">
+                                <a href="../friends/friends.php"
+                                    class="bg-gray-100 hover:bg-gray-200 text-gray-800 px-5 py-2 rounded-lg font-medium transition flex items-center">
                                     <i class="fas fa-users mr-2"></i> Friends
                                 </a>
                             </div>
                         </div>
-                        
+
                         <!-- Bio -->
                         <div class="mt-4">
                             <p class="text-gray-700">
@@ -207,24 +168,7 @@ function getFirstName($fullName) {
                         </div>
                         <div class="flex items-center text-gray-700">
                             <i class="fas fa-clock text-gray-400 mr-3 w-5"></i>
-                            <span>
-                                Last seen: 
-                                <?php 
-                                $lastSeen = strtotime($currentUser['last_seen']);
-                                $now = time();
-                                $diff = $now - $lastSeen;
-                                
-                                if ($diff < 60) {
-                                    echo 'Just now';
-                                } elseif ($diff < 3600) {
-                                    echo floor($diff / 60) . ' minutes ago';
-                                } elseif ($diff < 86400) {
-                                    echo floor($diff / 3600) . ' hours ago';
-                                } else {
-                                    echo date('M j, Y', $lastSeen);
-                                }
-                                ?>
-                            </span>
+                            <span><?php echo formatTimeAgo($currentUser['last_seen']); ?></span>
                         </div>
                     </div>
                 </div>
@@ -240,30 +184,30 @@ function getFirstName($fullName) {
                             See all
                         </a>
                     </div>
-                    
+
                     <?php if (empty($userFriends)): ?>
                         <div class="text-center py-6">
                             <i class="fas fa-user-friends text-gray-300 text-3xl mb-3"></i>
                             <p class="text-gray-500">No friends yet</p>
-                            <a href="../friends/friends.php" class="text-blue-600 hover:text-blue-800 text-sm mt-2 inline-block">
+                            <a href="../friends/find-friends.php" class="text-blue-600 hover:text-blue-800 text-sm mt-2 inline-block">
                                 Find friends
                             </a>
                         </div>
                     <?php else: ?>
                         <div class="grid grid-cols-3 gap-3">
                             <?php foreach ($userFriends as $friend): ?>
-                                <a href="view-profile.php?id=<?php echo $friend['id']; ?>" 
-                                   class="group block text-center">
+                                <a href="view-profile.php?id=<?php echo $friend['id']; ?>"
+                                    class="group block text-center">
                                     <div class="relative inline-block">
-                                        <img src="<?php echo getProfilePicForUser($friend['id']); ?>" 
-                                             alt="<?php echo htmlspecialchars($friend['full_name'] ?? $friend['username']); ?>"
-                                             class="w-16 h-16 rounded-full object-cover group-hover:opacity-90 transition">
+                                        <img src="<?php echo getProfilePic($friend['id']); ?>"
+                                            alt="<?php echo htmlspecialchars($friend['full_name'] ?? $friend['username']); ?>"
+                                            class="w-16 h-16 rounded-full object-cover group-hover:opacity-90 transition">
                                         <?php if ($friend['is_online'] == 1): ?>
                                             <span class="absolute bottom-1 right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
                                         <?php endif; ?>
                                     </div>
                                     <p class="text-xs text-gray-700 mt-1 truncate">
-                                        <?php echo htmlspecialchars(getFirstName($friend['full_name'] ?? $friend['username'])); ?>
+                                        <?php echo htmlspecialchars(explode(' ', $friend['full_name'] ?? $friend['username'])[0]); ?>
                                     </p>
                                 </a>
                             <?php endforeach; ?>
@@ -292,7 +236,7 @@ function getFirstName($fullName) {
                             error_log("Get photos error: " . $e->getMessage());
                             $photos = [];
                         }
-                        
+
                         if (empty($photos)): ?>
                             <div class="col-span-3 text-center py-4">
                                 <i class="fas fa-image text-gray-300 text-2xl mb-2"></i>
@@ -300,15 +244,13 @@ function getFirstName($fullName) {
                             </div>
                         <?php else: ?>
                             <?php foreach ($photos as $photo): ?>
-                                <?php if (!empty($photo)): ?>
-                                    <a href="../uploads/post_images/<?php echo htmlspecialchars($photo); ?>" 
-                                       target="_blank"
-                                       class="block aspect-square overflow-hidden rounded-lg">
-                                        <img src="../uploads/post_images/<?php echo htmlspecialchars($photo); ?>" 
-                                             alt="Photo"
-                                             class="w-full h-full object-cover hover:scale-105 transition duration-300">
-                                    </a>
-                                <?php endif; ?>
+                                <a href="../uploads/post_images/<?php echo htmlspecialchars($photo); ?>"
+                                    target="_blank"
+                                    class="block aspect-square overflow-hidden rounded-lg">
+                                    <img src="../uploads/post_images/<?php echo htmlspecialchars($photo); ?>"
+                                        alt="Photo"
+                                        class="w-full h-full object-cover hover:scale-105 transition duration-300">
+                                </a>
                             <?php endforeach; ?>
                         <?php endif; ?>
                     </div>
@@ -320,29 +262,12 @@ function getFirstName($fullName) {
                 <!-- Create Post Card -->
                 <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
                     <div class="flex items-center space-x-3">
-                        <img src="<?php echo getProfilePicForUser(); ?>" 
-                             alt="Your profile" 
-                             class="w-10 h-10 rounded-full object-cover">
-                        <button onclick="window.location.href='../index.php'" 
-                                class="flex-1 text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition">
-                            What's on your mind, <?php echo htmlspecialchars($currentUser['full_name'] ?? $currentUser['username']); ?>?
-                        </button>
-                    </div>
-                    <div class="flex items-center justify-around mt-4 pt-4 border-t border-gray-100">
-                        <button onclick="window.location.href='../index.php'" 
-                                class="flex items-center text-gray-600 hover:text-blue-600 transition">
-                            <i class="fas fa-photo-video text-green-500 mr-2"></i>
-                            <span class="text-sm font-medium">Photo/Video</span>
-                        </button>
-                        <button onclick="window.location.href='../index.php'" 
-                                class="flex items-center text-gray-600 hover:text-red-600 transition">
-                            <i class="fas fa-video text-red-500 mr-2"></i>
-                            <span class="text-sm font-medium">Live Video</span>
-                        </button>
-                        <button onclick="window.location.href='../index.php'" 
-                                class="flex items-center text-gray-600 hover:text-yellow-600 transition">
-                            <i class="fas fa-laugh-beam text-yellow-500 mr-2"></i>
-                            <span class="text-sm font-medium">Feeling/Activity</span>
+                        <img src="<?php echo getProfilePic($currentUser['id']); ?>"
+                            alt="Your profile"
+                            class="w-10 h-10 rounded-full object-cover">
+                        <button onclick="window.location.href='../index.php'"
+                            class="flex-1 text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition">
+                            What's on your mind, <?php echo htmlspecialchars(explode(' ', $currentUser['full_name'] ?? $currentUser['username'])[0]); ?>?
                         </button>
                     </div>
                 </div>
@@ -354,46 +279,44 @@ function getFirstName($fullName) {
                             <i class="fas fa-newspaper text-gray-300 text-5xl mb-4"></i>
                             <h3 class="text-xl font-bold text-gray-700 mb-2">No posts yet</h3>
                             <p class="text-gray-500 mb-4">Share your first post!</p>
-                            <button onclick="window.location.href='../index.php'" 
-                                    class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full transition">
+                            <button onclick="window.location.href='../index.php'"
+                                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full transition">
                                 <i class="fas fa-plus mr-2"></i> Create First Post
                             </button>
                         </div>
                     <?php else: ?>
                         <?php foreach ($userPosts as $post): ?>
-                            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4" id="post-<?php echo $post['id']; ?>">
                                 <!-- Post Header -->
                                 <div class="flex items-center justify-between mb-4">
                                     <div class="flex items-center space-x-3">
                                         <a href="profile.php">
-                                            <img src="<?php echo getProfilePicForUser($currentUser['id']); ?>" 
-                                                 alt="<?php echo htmlspecialchars($currentUser['username']); ?>"
-                                                 class="w-10 h-10 rounded-full object-cover">
+                                            <img src="<?php echo getProfilePic($currentUser['id']); ?>"
+                                                alt="<?php echo htmlspecialchars($currentUser['username']); ?>"
+                                                class="w-10 h-10 rounded-full object-cover">
                                         </a>
                                         <div>
                                             <a href="profile.php" class="font-bold text-gray-800 hover:text-blue-600 transition">
                                                 <?php echo htmlspecialchars($currentUser['full_name'] ?? $currentUser['username']); ?>
                                             </a>
                                             <div class="flex items-center text-gray-500 text-sm">
-                                                <span><?php echo date('M j, Y \a\t g:i A', strtotime($post['created_at'])); ?></span>
+                                                <span><?php echo formatTimeAgo($post['created_at']); ?></span>
                                                 <span class="mx-2">•</span>
                                                 <i class="fas fa-<?php echo $post['privacy'] === 'public' ? 'globe' : ($post['privacy'] === 'friends' ? 'users' : 'lock'); ?> text-xs"></i>
                                             </div>
                                         </div>
                                     </div>
-                                    <?php if ($post['user_id'] == $currentUser['id']): ?>
-                                        <div class="relative group">
-                                            <button class="p-2 rounded-full hover:bg-gray-100 text-gray-500">
-                                                <i class="fas fa-ellipsis-h"></i>
+                                    <div class="relative">
+                                        <button onclick="togglePostMenu(<?php echo $post['id']; ?>)" class="p-2 rounded-full hover:bg-gray-100 text-gray-500">
+                                            <i class="fas fa-ellipsis-h"></i>
+                                        </button>
+                                        <div id="postMenu-<?php echo $post['id']; ?>" class="hidden absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                                            <button onclick="deletePost(<?php echo $post['id']; ?>)"
+                                                class="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg">
+                                                <i class="fas fa-trash mr-2"></i> Delete Post
                                             </button>
-                                            <div class="absolute right-0 mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 hidden group-hover:block z-10">
-                                                <button onclick="deletePost(<?php echo $post['id']; ?>)" 
-                                                        class="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 rounded-t-lg">
-                                                    <i class="fas fa-trash mr-2"></i> Delete
-                                                </button>
-                                            </div>
                                         </div>
-                                    <?php endif; ?>
+                                    </div>
                                 </div>
 
                                 <!-- Post Content -->
@@ -401,9 +324,9 @@ function getFirstName($fullName) {
                                     <p class="text-gray-800 whitespace-pre-line"><?php echo nl2br(htmlspecialchars($post['content'])); ?></p>
                                     <?php if (!empty($post['image'])): ?>
                                         <div class="mt-4">
-                                            <img src="../uploads/post_images/<?php echo htmlspecialchars($post['image']); ?>" 
-                                                 alt="Post image" 
-                                                 class="w-full rounded-lg max-h-96 object-cover">
+                                            <img src="../uploads/post_images/<?php echo htmlspecialchars($post['image']); ?>"
+                                                alt="Post image"
+                                                class="w-full rounded-lg max-h-96 object-cover">
                                         </div>
                                     <?php endif; ?>
                                 </div>
@@ -411,7 +334,7 @@ function getFirstName($fullName) {
                                 <!-- Post Stats -->
                                 <div class="flex items-center justify-between text-gray-500 text-sm border-b border-gray-100 pb-3 mb-3">
                                     <div class="flex items-center space-x-4">
-                                        <span class="flex items-center">
+                                        <span class="flex items-center" id="likeCount-<?php echo $post['id']; ?>">
                                             <i class="fas fa-thumbs-up text-blue-500 mr-1"></i>
                                             <?php echo $post['like_count']; ?> likes
                                         </span>
@@ -424,13 +347,13 @@ function getFirstName($fullName) {
 
                                 <!-- Post Actions -->
                                 <div class="flex items-center justify-around">
-                                    <button onclick="toggleLike(<?php echo $post['id']; ?>)" 
-                                            class="flex items-center space-x-2 text-gray-600 hover:text-blue-600 transition">
+                                    <button onclick="toggleLike(<?php echo $post['id']; ?>)"
+                                        id="likeBtn-<?php echo $post['id']; ?>"
+                                        class="flex items-center space-x-2 <?php echo $post['user_liked'] ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'; ?> transition">
                                         <i class="fas fa-thumbs-up"></i>
                                         <span class="font-medium">Like</span>
                                     </button>
-                                    <button onclick="toggleCommentBox(<?php echo $post['id']; ?>)" 
-                                            class="flex items-center space-x-2 text-gray-600 hover:text-green-600 transition">
+                                    <button class="flex items-center space-x-2 text-gray-600 hover:text-green-600 transition">
                                         <i class="fas fa-comment"></i>
                                         <span class="font-medium">Comment</span>
                                     </button>
@@ -458,48 +381,39 @@ function getFirstName($fullName) {
                     </button>
                 </div>
 
-                <form id="avatarForm" enctype="multipart/form-data" action="upload-avatar.php" method="POST">
-                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
-                    
+                <form id="avatarForm" enctype="multipart/form-data">
                     <div class="text-center mb-6">
                         <div class="relative inline-block">
-                            <img id="avatarPreview" 
-                                 src="<?php echo getProfilePicForUser(); ?>" 
-                                 alt="Profile Preview"
-                                 class="w-32 h-32 rounded-full object-cover mx-auto border-4 border-white shadow-lg">
+                            <img id="avatarPreview"
+                                src="<?php echo getProfilePic($currentUser['id']); ?>"
+                                alt="Profile Preview"
+                                class="w-32 h-32 rounded-full object-cover mx-auto border-4 border-white shadow-lg">
                             <div id="avatarSpinner" class="hidden absolute inset-0 bg-white bg-opacity-80 rounded-full flex items-center justify-center">
                                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                             </div>
                         </div>
                     </div>
 
-                    <input type="file" 
-                           id="avatarInput" 
-                           name="avatar" 
-                           accept="image/*" 
-                           class="hidden" 
-                           onchange="previewAvatar(this)">
+                    <input type="file"
+                        id="avatarInput"
+                        name="avatar"
+                        accept="image/*"
+                        class="hidden"
+                        onchange="previewAvatar(this)">
 
                     <div class="space-y-4">
-                        <label for="avatarInput" 
-                               class="block w-full bg-blue-50 border-2 border-dashed border-blue-200 rounded-xl py-8 text-center cursor-pointer hover:bg-blue-100 transition">
+                        <label for="avatarInput"
+                            class="block w-full bg-blue-50 border-2 border-dashed border-blue-200 rounded-xl py-8 text-center cursor-pointer hover:bg-blue-100 transition">
                             <i class="fas fa-cloud-upload-alt text-blue-500 text-3xl mb-3"></i>
                             <p class="text-blue-700 font-medium">Click to upload photo</p>
                             <p class="text-blue-500 text-sm mt-1">JPG, PNG or GIF (Max 5MB)</p>
                         </label>
 
-                        <div class="flex space-x-3">
-                            <button type="button" 
-                                    onclick="document.getElementById('avatarInput').click()" 
-                                    class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 py-3 rounded-lg font-medium transition">
-                                Choose File
-                            </button>
-                            <button type="submit" 
-                                    id="uploadBtn"
-                                    class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-medium transition">
-                                Upload
-                            </button>
-                        </div>
+                        <button type="submit"
+                            id="uploadBtn"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-medium transition">
+                            Upload Photo
+                        </button>
                     </div>
                 </form>
 
@@ -508,12 +422,7 @@ function getFirstName($fullName) {
         </div>
     </div>
 
-    <!-- Simple Footer -->
-    <footer class="bg-white border-t border-gray-200 mt-8 py-6">
-        <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
-            <p>© <?php echo date('Y'); ?> <?php echo SITE_NAME; ?>. All rights reserved.</p>
-        </div>
-    </footer>
+    <?php include '../includes/footer.php'; ?>
 
     <script>
         // Avatar Upload Functions
@@ -526,6 +435,7 @@ function getFirstName($fullName) {
             document.getElementById('avatarModal').classList.add('hidden');
             document.body.style.overflow = 'auto';
             document.getElementById('avatarInput').value = '';
+            document.getElementById('avatarMessage').classList.add('hidden');
         }
 
         function previewAvatar(input) {
@@ -539,36 +449,37 @@ function getFirstName($fullName) {
             }
         }
 
-        // Handle avatar form submission
         document.getElementById('avatarForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
-            const formData = new FormData(this);
-            
-            // Show loading
+
+            const fileInput = document.getElementById('avatarInput');
+            if (!fileInput.files || !fileInput.files[0]) {
+                showMessage('Please select an image first', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('avatar', fileInput.files[0]);
+
             const spinner = document.getElementById('avatarSpinner');
             const uploadBtn = document.getElementById('uploadBtn');
             spinner.classList.remove('hidden');
             uploadBtn.disabled = true;
             uploadBtn.innerHTML = 'Uploading...';
-            
+
             try {
                 const response = await fetch('upload-avatar.php', {
                     method: 'POST',
                     body: formData
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (result.success) {
                     showMessage(result.message, 'success');
-                    // Update profile picture on page
-                    document.getElementById('avatarPreview').src = result.new_url + '?t=' + new Date().getTime();
-                    // Close modal after 2 seconds
                     setTimeout(() => {
-                        closeAvatarUpload();
                         location.reload();
-                    }, 2000);
+                    }, 1500);
                 } else {
                     showMessage(result.message, 'error');
                 }
@@ -578,7 +489,7 @@ function getFirstName($fullName) {
             } finally {
                 spinner.classList.add('hidden');
                 uploadBtn.disabled = false;
-                uploadBtn.innerHTML = 'Upload';
+                uploadBtn.innerHTML = 'Upload Photo';
             }
         });
 
@@ -595,27 +506,108 @@ function getFirstName($fullName) {
             messageDiv.classList.remove('hidden');
         }
 
-        // Close modal when clicking outside
         document.getElementById('avatarModal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeAvatarUpload();
             }
         });
 
-        // Placeholder functions for post interactions
-        function toggleLike(postId) {
-            alert('Like functionality will be implemented soon! Post ID: ' + postId);
+        // Post Menu Toggle
+        function togglePostMenu(postId) {
+            const menu = document.getElementById('postMenu-' + postId);
+            const allMenus = document.querySelectorAll('[id^="postMenu-"]');
+            allMenus.forEach(m => {
+                if (m.id !== 'postMenu-' + postId) m.classList.add('hidden');
+            });
+            menu.classList.toggle('hidden');
         }
 
-        function toggleCommentBox(postId) {
-            alert('Comment functionality will be implemented soon! Post ID: ' + postId);
+        // Close menus when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('[onclick^="togglePostMenu"]')) {
+                document.querySelectorAll('[id^="postMenu-"]').forEach(m => m.classList.add('hidden'));
+            }
+        });
+
+        // Like functionality
+        async function toggleLike(postId) {
+            try {
+                const response = await fetch('../posts/toggle-like.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        post_id: postId,
+                        csrf_token: '<?php echo generateCsrfToken(); ?>'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    const likeBtn = document.getElementById('likeBtn-' + postId);
+                    const likeCount = document.getElementById('likeCount-' + postId);
+
+                    if (result.liked) {
+                        likeBtn.classList.remove('text-gray-600');
+                        likeBtn.classList.add('text-blue-600');
+                    } else {
+                        likeBtn.classList.remove('text-blue-600');
+                        likeBtn.classList.add('text-gray-600');
+                    }
+
+                    likeCount.innerHTML = `<i class="fas fa-thumbs-up text-blue-500 mr-1"></i>${result.like_count} likes`;
+                } else {
+                    alert(result.message || 'Error toggling like');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Network error. Please try again.');
+            }
         }
 
-        function deletePost(postId) {
-            if (confirm('Are you sure you want to delete this post?')) {
-                alert('Post deletion will be implemented soon! Post ID: ' + postId);
+        // Delete post functionality
+        async function deletePost(postId) {
+            if (!confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('../posts/delete-post.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        post_id: postId,
+                        csrf_token: '<?php echo generateCsrfToken(); ?>'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    const postElement = document.getElementById('post-' + postId);
+                    postElement.style.opacity = '0';
+                    postElement.style.transition = 'opacity 0.3s';
+                    setTimeout(() => {
+                        postElement.remove();
+                        // Check if no more posts
+                        const postsContainer = postElement.parentElement;
+                        if (postsContainer.children.length === 0) {
+                            location.reload();
+                        }
+                    }, 300);
+                } else {
+                    alert(result.message || 'Failed to delete post');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Network error. Please try again.');
             }
         }
     </script>
 </body>
+
 </html>
